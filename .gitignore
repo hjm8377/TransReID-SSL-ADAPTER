@@ -227,5 +227,5 @@ vit_tiaocan*.yml
 
 
 models/TransReID-SSL-ADAPTER/model/backbones/ops/MultiScaleDeformableAttention.egg-info
-models/TransReID-SSL-ADAPTER/model/backbones/dist/
-models/TransReID-SSL-ADAPTER/model/backbones/build
+models/TransReID-SSL-ADAPTER/model/backbones/ops/dist/
+models/TransReID-SSL-ADAPTER/model/backbones/ops/build
