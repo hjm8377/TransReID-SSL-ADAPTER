@@ -4,10 +4,10 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ops.modules import MSDeformAttn
+from .ops.modules import MSDeformAttn
 
-import vit_pytorch
-from vit_pytorch import TransReID, trunc_normal_
+
+from .vit_pytorch import TransReID, trunc_normal_
 from torch.nn.init import normal_
 
 from .adapter_module import (InteractionBlock, SpatialPriorModule,
@@ -16,20 +16,21 @@ from .adapter_module import (InteractionBlock, SpatialPriorModule,
 _logger = logging.getLogger(__name__)
 
 class TransReIDAdapter(TransReID):
-    def __init__(self, pretrain_size=224, num_heads=12, conv_inplane=64, n_points=4, deform_num_heads=6,
+    def __init__(self, pretrain_size=(224, 224), num_heads=12, conv_inplane=64, n_points=4, deform_num_heads=6,
                  init_values=0., interaction_indexes=None, with_cffn=True, cffn_ratio=0.25,
                  deform_ratio=1.0, add_vit_feature=True, use_extra_extractor=True, *args, **kwargs):
         super().__init__(num_heads=num_heads, *args, **kwargs)
 
         # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.num_block = len(self.blocks)
-        self.pretrain_size = (pretrain_size, pretrain_size)
+        self.pretrain_size = pretrain_size
         self.interaction_indexes = interaction_indexes
         self.add_vit_feature = add_vit_feature
         embed_dim = self.embed_dim
+        print("======================", embed_dim)
 
         self.level_embed = nn.Parameter(torch.zeros(3, embed_dim))
-        self.spm = SpatialPriorModule(inplnes=conv_inplane,
+        self.spm = SpatialPriorModule(inplanes=conv_inplane,
                                       embed_dim=embed_dim)
         self.interactions = nn.Sequential(*[
             InteractionBlock(dim=embed_dim, num_heads=deform_num_heads, n_points=n_points,
@@ -68,6 +69,10 @@ class TransReIDAdapter(TransReID):
                 m.bias.data.zero_()
 
     def _get_pos_embed(self, pos_embed, H, W):
+        # ===================== [ 디버깅 코드 추가 ] =====================
+        print(f"DEBUG: self.pretrain_size = {self.pretrain_size}")
+        print(f"DEBUG: Input pos_embed total elements = {pos_embed.numel()}")
+        # ===============================================================
         pos_embed = pos_embed.reshape(
             1, self.pretrain_size[0] // 16, self.pretrain_size[1] // 16, -1).permute(0, 3, 1, 2)
         pos_embed = F.interpolate(pos_embed, size=(H, W), mode='bicubic', align_corners=False).\
@@ -95,12 +100,12 @@ class TransReIDAdapter(TransReID):
         c = torch.cat([c2, c3, c4], dim=1)
 
         # ViT
-        x_vit, H, W = self.patch_embed(x)
+        x_vit, H, W = self.patch_embed(x, True)
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x_vit = torch.cat((cls_tokens, x_vit), dim=1)
 
         pos_embed = self._get_pos_embed(self.pos_embed[:, 1:], H, W)
-        x_vit[:, 1:, :] = x_vit[:, 1:, :] + pos_embed
+        x_vit = self.pos_drop(x_vit + pos_embed)
 
         # SIE 
         if self.cam_num > 0 and self.view_num > 0:
@@ -133,10 +138,10 @@ class TransReIDAdapter(TransReID):
 
 
 def vit_base_patch16_224_TransReID(img_size=(256, 128), stride_size=16, drop_path_rate=0.1, camera=0, view=0,local_feature=False,sie_xishu=1.5, **kwargs):
-    model = TransReIDAdapter(img_size=img_size, patch_size=16, stride_size=stride_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, camera=camera, view=view, drop_path_rate=drop_path_rate, sie_xishu=sie_xishu, local_feature=local_feature, **kwargs)
+    model = TransReIDAdapter(pretrain_size=img_size, patch_size=16, stride_size=stride_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, camera=camera, view=view, drop_path_rate=drop_path_rate, sie_xishu=sie_xishu, local_feature=local_feature, interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]], **kwargs)
     return model
 
 def vit_small_patch16_224_TransReID(img_size=(256, 128), stride_size=16, drop_path_rate=0.1, camera=0, view=0, local_feature=False, sie_xishu=1.5, **kwargs):
-    model = TransReIDAdapter(img_size=img_size, patch_size=16, stride_size=stride_size, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,drop_path_rate=drop_path_rate, camera=camera, view=view, sie_xishu=sie_xishu, local_feature=local_feature,  **kwargs)
+    model = TransReIDAdapter(pretrain_size=img_size, patch_size=16, stride_size=stride_size, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,drop_path_rate=drop_path_rate, camera=camera, view=view, sie_xishu=sie_xishu, local_feature=local_feature, interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]], **kwargs)
     model.in_planes = 384
     return model

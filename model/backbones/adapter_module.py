@@ -4,7 +4,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
-from ops.modules import MSDeformAttn
+from .ops.modules import MSDeformAttn
 from timm.models.layers import DropPath
 
 def get_reference_points(spatial_shapes, device):
@@ -42,6 +42,29 @@ def deform_inputs(x):
     deform_inputs2 = [reference_points, spatial_shapes, level_start_index]
 
     return deform_inputs1, deform_inputs2
+
+def build_norm(norm_layer, dim):
+    """
+    norm_layer가 아래 중 무엇이든 안전하게 LayerNorm을 새로 만들어 돌려준다:
+    - 클래스(type): e.g., nn.LayerNorm
+    - partial/callable: e.g., partial(nn.LayerNorm, eps=1e-6)
+    - 인스턴스(nn.Module): e.g., nn.LayerNorm(768, eps=1e-6)
+      -> 이 경우 새 인스턴스를 만들어서 반환 (동일 인스턴스 공유 방지)
+    """
+    import types
+    if isinstance(norm_layer, nn.Module):
+        # 기존 인스턴스의 설정을 복사해 새로 생성
+        eps = getattr(norm_layer, 'eps', 1e-6)
+        return nn.LayerNorm(dim, eps=eps)
+    elif isinstance(norm_layer, type):
+        # 클래스인 경우
+        return norm_layer(dim)
+    elif isinstance(norm_layer, types.FunctionType) or callable(norm_layer):
+        # partial 등 callable
+        return norm_layer(dim)
+    else:
+        # 최후의 수단
+        return nn.LayerNorm(dim, eps=1e-6)
 
 
 class ConvFFN(nn.Module):
@@ -89,15 +112,15 @@ class Extractor(nn.Module):
                  with_cffn=True, cffn_ratio=0.25, drop=0., drop_path=0.,
                  norm_layer=partial(nn.LayerNorm, eps=1e-6), with_cp=False):
         super().__init__()
-        self.query_norm = norm_layer(dim)
-        self.feat_norm = norm_layer(dim)
+        self.query_norm = build_norm(norm_layer, dim)
+        self.feat_norm = build_norm(norm_layer, dim)
         self.attn = MSDeformAttn(d_model=dim, n_levels=n_levels, n_heads=num_heads,
                                  n_points=n_points, ratio=deform_ratio)
         self.with_cffn = with_cffn
         self.with_cp = with_cp
         if with_cffn:
             self.ffn = ConvFFN(in_features=dim, hidden_features=int(dim * cffn_ratio), drop=drop)
-            self.ffn_norm = norm_layer(dim)
+            self.ffn_norm = build_norm(norm_layer, dim)
             self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, query, reference_points, feat, spatial_shapes, level_start_index, H, W):
@@ -126,8 +149,8 @@ class Injector(nn.Module):
                  norm_layer=partial(nn.LayerNorm, eps=1e-6), init_values=0., with_cp=False):
         super().__init__()
         self.with_cp = with_cp
-        self.query_norm = norm_layer(dim)
-        self.feat_norm = norm_layer(dim)
+        self.query_norm = build_norm(norm_layer, dim)
+        self.feat_norm = build_norm(norm_layer, dim)
         self.attn = MSDeformAttn(d_model=dim, n_levels=n_levels, n_heads=num_heads,
                                  n_points=n_points, ratio=deform_ratio)
         self.gamma = nn.Parameter(init_values * torch.ones((dim)), requires_grad=True)

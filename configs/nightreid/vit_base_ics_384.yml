@@ -26,7 +26,6 @@ INPUT:
 DATASETS:
   NAMES: ('nightreid')
   ROOT_DIR: ('/workspace/datasets')
-  LLIE: ('')
 
 DATALOADER:
   SAMPLER: 'softmax_triplet'
@@ -52,9 +51,9 @@ TEST:
   EVAL: True
   IMS_PER_BATCH: 256
   RE_RANKING: False
-  WEIGHT: '/workspace/logs/transreid/nightreid/transformer_120.pth'
+  WEIGHT: '/workspace/logs/transreid_adapter/nightreid/transformer_120.pth'
   NECK_FEAT: 'before'
   FEAT_NORM: 'yes'
 
-OUTPUT_DIR: '/workspace/logs/transreid/nightreid/'
+OUTPUT_DIR: '/workspace/logs/transreid_adapter/nightreid/'
 
